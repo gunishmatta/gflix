@@ -9,19 +9,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
+	"mime/multipart"
 	"net/http"
 	_ "strconv"
 	"time"
 	"video-service/helpers"
 )
-
-// Video struct represents a video object
-type Video struct {
-	ID    primitive.ObjectID `bson:"_id,omitempty"`
-	Title string             `bson:"title,omitempty"`
-	Genre string             `bson:"genre,omitempty"`
-	Age   int                `bson:"age,omitempty"`
-}
 
 // MongoDB database and collection names
 const (
@@ -122,29 +115,65 @@ func getVideo(w http.ResponseWriter, r *http.Request) {
 // @Tags videos
 // @Accept json
 // @Produce json
-// @Param body body Video true "Request body"
+// @Param body body CreateVideoRequest true "Request body"
 // @Success 201 {object} Video
 // @Failure 400
 // @Failure 500
 // @Router /videos [post]
 func createVideo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var video Video
-	err := json.NewDecoder(r.Body).Decode(&video)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	result, err := videoColl.InsertOne(context.Background(), video)
+	err := r.ParseMultipartForm(32 << 20) // limit file size to 32 MB
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	newID := result.InsertedID.(primitive.ObjectID)
-	video.ID = newID
-
-	err = json.NewEncoder(w).Encode(video)
-	if err != nil {
+		helpers.RespondWithError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
 	}
+
+	var createVideoRequest CreateVideoRequest
+	err = json.NewDecoder(r.Body).Decode(&createVideoRequest)
+	if err := json.Unmarshal([]byte(r.FormValue("video")), &createVideoRequest); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Get the video file from the form data
+	file, header, err := r.FormFile("video_file")
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusBadRequest, "Failed to get video file from form data")
+		return
+	}
+	defer func(file multipart.File) {
+		err := file.Close()
+		if err != nil {
+			return
+		}
+	}(file)
+
+	// Upload the video file to Minio
+	videoURL, err := UploadToMinio(file, header)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to upload video to Minio")
+		return
+	}
+
+	// Create new Video object with the obtained URL
+	video := Video{
+		ID:          primitive.NewObjectID(),
+		Title:       createVideoRequest.Title,
+		Description: createVideoRequest.Description,
+		Genre:       createVideoRequest.Genre,
+		AgeRating:   createVideoRequest.AgeRating,
+		Url:         videoURL,
+	}
+
+	// Insert the video into MongoDB
+	result, err := videoColl.InsertOne(context.Background(), video)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to create video")
+		return
+	}
+
+	// Return success response
+	helpers.RespondWithJSON(w, http.StatusCreated, result)
+
 }
