@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,6 +11,7 @@ import (
 	"net/http"
 	_ "strconv"
 	"time"
+	"video-service/helpers"
 
 	"github.com/gorilla/mux"
 )
@@ -44,6 +44,9 @@ func main() {
 	router := mux.NewRouter()
 
 	// Define the routes
+	//router.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
+	//	httpSwagger.URL("localhost:8000/docs/swa"), // URL pointing to the API docs JSON file
+	//))
 	router.HandleFunc("/videos", getVideos).Methods("GET")
 	router.HandleFunc("/videos/{id}", getVideo).Methods("GET")
 	router.HandleFunc("/videos", createVideo).Methods("POST")
@@ -78,7 +81,7 @@ func connectMongoDB() {
 }
 
 // getVideos returns all the videos
-func getVideos(w http.ResponseWriter, r *http.Request) {
+func getVideos(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cursor, err := videoColl.Find(ctx, bson.M{})
@@ -88,47 +91,15 @@ func getVideos(w http.ResponseWriter, r *http.Request) {
 	defer func(cursor *mongo.Cursor, ctx context.Context) {
 		err := cursor.Close(ctx)
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Failed to get videos from database")
+			helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to get videos from database")
 		}
 	}(cursor, ctx)
 	var videos []Video
 	if err = cursor.All(ctx, &videos); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to decode videos from database")
+		helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to decode videos from database")
 		return
 	}
-	respondWithJSON(w, http.StatusOK, videos)
-}
-
-func response(w http.ResponseWriter, statusCode int, payload interface{}, contentType string) {
-	if contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	}
-	w.WriteHeader(statusCode)
-	switch payload.(type) {
-	case string:
-		_, err := fmt.Fprint(w, payload)
-		if err != nil {
-			return
-		}
-	default:
-		jsonResponse, err := json.Marshal(payload)
-		if err != nil {
-			response(w, http.StatusInternalServerError, "Failed to serialize response", "")
-			return
-		}
-		_, err = w.Write(jsonResponse)
-		if err != nil {
-			return
-		}
-	}
-}
-
-func respondWithJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
-	response(w, statusCode, payload, "application/json")
-}
-
-func respondWithError(w http.ResponseWriter, statusCode int, message string) {
-	response(w, statusCode, message, "")
+	helpers.RespondWithJSON(w, http.StatusOK, videos)
 }
 
 // getVideo returns a specific video by ID
@@ -152,7 +123,16 @@ func getVideo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// createVideo creates a new video
+// @Summary Create a new video
+// @Description Create a new video with the specified title, description, and genre
+// @Tags videos
+// @Accept json
+// @Produce json
+// @Param body body Video true "Request body"
+// @Success 201 {object} Video
+// @Failure 400
+// @Failure 500
+// @Router /videos [post]
 func createVideo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var video Video
