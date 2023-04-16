@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,8 +13,6 @@ import (
 	_ "strconv"
 	"time"
 	"video-service/helpers"
-
-	"github.com/gorilla/mux"
 )
 
 // Video struct represents a video object
@@ -42,11 +41,6 @@ func main() {
 
 	// Create a new router
 	router := mux.NewRouter()
-
-	// Define the routes
-	//router.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
-	//	httpSwagger.URL("localhost:8000/docs/swa"), // URL pointing to the API docs JSON file
-	//))
 	router.HandleFunc("/videos", getVideos).Methods("GET")
 	router.HandleFunc("/videos/{id}", getVideo).Methods("GET")
 	router.HandleFunc("/videos", createVideo).Methods("POST")
