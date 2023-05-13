@@ -14,8 +14,8 @@ import (
 
 func UploadToMinio(file multipart.File, header *multipart.FileHeader) (string, error) {
 	endpoint := "localhost:9000"
-	accessKeyID := "Sobojyuq074StC4b"
-	secretAccessKey := "scDbm1N1EhnCEtjXzkOO4Bq588725tKO"
+	accessKeyID := "AWWDpPvVFabkJDWJ"
+	secretAccessKey := "6sLvaULz338lrEEEJNzCYFkO8t4a84MT"
 	// Initialize minio client object.
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),

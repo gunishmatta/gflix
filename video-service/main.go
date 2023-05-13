@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -48,7 +49,11 @@ func main() {
 // connectMongoDB initializes the MongoDB client and collection instances
 func connectMongoDB() {
 	// Set client options
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017").SetAuth(options.Credential{
+		Username:    "root",
+		Password:    "example",
+		PasswordSet: true,
+	})
 
 	// Connect to MongoDB
 	var err error
@@ -68,7 +73,8 @@ func connectMongoDB() {
 }
 
 // getVideos returns all the videos
-func getVideos(w http.ResponseWriter, _ *http.Request) {
+func getVideos(w http.ResponseWriter, r *http.Request) {
+	log.Printf("request received %v", r)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cursor, err := videoColl.Find(ctx, bson.M{})
@@ -121,7 +127,7 @@ func getVideo(w http.ResponseWriter, r *http.Request) {
 // @Failure 500
 // @Router /videos [post]
 func createVideo(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	//w.Header().Set("Content-Type", "application/json")
 
 	err := r.ParseMultipartForm(32 << 20) // limit file size to 32 MB
 	if err != nil {
@@ -168,8 +174,22 @@ func createVideo(w http.ResponseWriter, r *http.Request) {
 
 	// Insert the video into MongoDB
 	result, err := videoColl.InsertOne(context.Background(), video)
+	log.Printf("Inserted Video %v", result)
+	if err != nil {
+		log.Printf("Error %v", err)
+		helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to create video")
+		return
+	}
+	videoJSON, err := json.Marshal(video)
 	if err != nil {
 		helpers.RespondWithError(w, http.StatusInternalServerError, "Failed to create video")
+	}
+
+	message := fmt.Sprintf(`{"eventType": "VIDEO_CREATED", "data": %s}`, string(videoJSON))
+
+	err = SendMessage("video-events", []byte(message))
+	if err != nil {
+		log.Printf("Failed to send Video Created Event message: %v", err)
 		return
 	}
 
